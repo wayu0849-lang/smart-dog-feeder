@@ -71,6 +71,19 @@
     </div>
   </div>
 
+
+  <!-- Real-time Alert Toast Banner -->
+  <div id="alertToast" class="hidden fixed top-3 left-4 right-4 max-w-md mx-auto z-50 transition-all duration-300 transform -translate-y-4 opacity-0 pointer-events-auto">
+    <div id="alertToastBox" class="p-3.5 rounded-2xl shadow-2xl border flex items-center gap-3 backdrop-blur-xl">
+      <div id="alertToastIcon" class="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"></div>
+      <div class="flex-1">
+        <div id="alertToastTitle" class="text-xs font-bold leading-tight"></div>
+        <div id="alertToastBody" class="text-[11px] mt-0.5 opacity-90"></div>
+      </div>
+      <button onclick="hideAlertToast()" class="p-1.5 text-xs opacity-60 hover:opacity-100 rounded-lg cursor-pointer">✕</button>
+    </div>
+  </div>
+
   <!-- iOS PWA Install Help Modal -->
   <div id="iosInstallModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
     <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl relative">
@@ -377,8 +390,141 @@
 
   </div>
 
-  <!-- Audio Context Synthesizer (Zero External Audio File Dependencies) -->
-  <script    // Configuration & State
+  <!-- Audio Context Synthesizer & Notification System -->
+  <script>
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function playChime(type = 'click') {
+      if (!document.getElementById('soundToggle') || !document.getElementById('soundToggle').checked) return;
+      try {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const now = audioCtx.currentTime;
+        if (type === 'click') {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(587.33, now);
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc.start(now);
+          osc.stop(now + 0.1);
+        } else if (type === 'success') {
+          [523.25, 659.25, 783.99].forEach((freq, i) => {
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.connect(g);
+            g.connect(audioCtx.destination);
+            o.type = 'triangle';
+            o.frequency.setValueAtTime(freq, now + i * 0.09);
+            g.gain.setValueAtTime(0.18, now + i * 0.09);
+            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.09 + 0.2);
+            o.start(now + i * 0.09);
+            o.stop(now + i * 0.09 + 0.2);
+          });
+        } else if (type === 'alert') {
+          [880, 660, 880].forEach((freq, i) => {
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.connect(g);
+            g.connect(audioCtx.destination);
+            o.type = 'sawtooth';
+            o.frequency.setValueAtTime(freq, now + i * 0.12);
+            g.gain.setValueAtTime(0.14, now + i * 0.12);
+            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.1);
+            o.start(now + i * 0.12);
+            o.stop(now + i * 0.12 + 0.1);
+          });
+        }
+      } catch (e) {
+        console.warn('Audio play failed:', e);
+      }
+    }
+
+    function triggerVibration(pattern = [40]) {
+      if (!document.getElementById('vibrateToggle') || !document.getElementById('vibrateToggle').checked) return;
+      if (navigator.vibrate) {
+        navigator.vibrate(pattern);
+      }
+    }
+
+    // In-App Toast & Native Web Push Notification Helper
+    function showNotificationAlert(title, message, type = 'warning') {
+      playChime(type === 'success' ? 'success' : 'alert');
+      triggerVibration([80, 100, 80]);
+
+      const toast = document.getElementById('alertToast');
+      const box   = document.getElementById('alertToastBox');
+      const icon  = document.getElementById('alertToastIcon');
+      const tEl   = document.getElementById('alertToastTitle');
+      const bEl   = document.getElementById('alertToastBody');
+
+      if (!toast || !box) return;
+
+      if (type === 'danger') {
+        box.className = 'p-3.5 rounded-2xl shadow-2xl border border-rose-500/40 bg-rose-950/90 text-white flex items-center gap-3 backdrop-blur-xl';
+        icon.className = 'w-10 h-10 rounded-xl bg-rose-500/20 text-rose-300 flex items-center justify-center text-xl shrink-0';
+        icon.textContent = '🚨';
+      } else if (type === 'warning') {
+        box.className = 'p-3.5 rounded-2xl shadow-2xl border border-amber-500/40 bg-amber-950/90 text-white flex items-center gap-3 backdrop-blur-xl';
+        icon.className = 'w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center text-xl shrink-0';
+        icon.textContent = '⚠️';
+      } else {
+        box.className = 'p-3.5 rounded-2xl shadow-2xl border border-emerald-500/40 bg-emerald-950/90 text-white flex items-center gap-3 backdrop-blur-xl';
+        icon.className = 'w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-xl shrink-0';
+        icon.textContent = '🥣';
+      }
+
+      tEl.textContent = title;
+      bEl.textContent = message;
+
+      toast.classList.remove('hidden', '-translate-y-4', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      clearTimeout(window._toastTimeout);
+      window._toastTimeout = setTimeout(hideAlertToast, 7000);
+
+      // Web Notification API (เด้งขึ้น Notification Shade ของมือถือ)
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification(title, {
+            body: message,
+            icon: 'icons/icon-192.png',
+            badge: 'icons/favicon-32.png',
+            vibrate: [200, 100, 200]
+          });
+        } catch(e) {}
+      }
+    }
+
+    function hideAlertToast() {
+      const toast = document.getElementById('alertToast');
+      if (toast) {
+        toast.classList.add('-translate-y-4', 'opacity-0');
+        setTimeout(() => toast.classList.add('hidden'), 300);
+      }
+    }
+
+    // ขอสิทธิ์แจ้งเตือนบนมือถือเมื่อผู้ใช้เริ่มโต้ตอบ
+    function requestPushPermission() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(p => {
+          if (p === 'granted') {
+            log('🔔 เปิดใช้งานการแจ้งเตือนบนหน้าจอมือถือสำเร็จ', 'success');
+          }
+        });
+      }
+    }
+  </script>
+
+  <!-- Main Application Logic & PWA Service Worker -->
+  <script>
+    // Configuration & State
     let MQTT_BROKER  = localStorage.getItem('dogfeeder_mqtt_broker') || 'wss://broker.emqx.io:8084/mqtt';
     let MQTT_TOPIC   = localStorage.getItem('dogfeeder_mqtt_topic')  || 'dogfeeder/wayu0849';
     let LOCAL_HOST    = localStorage.getItem('dogfeeder_local_host')   || 'http://dogfeeder.local';
@@ -391,6 +537,11 @@
 
     let isFeeding = false;
     let deferredPrompt = null;
+
+    // Alert Cooldown State
+    let lastHopperAlertState = false;
+    let lastBowlFullState    = false;
+    let lastBowlLowState     = false;
 
     // DOM Elements
     const statusBadge = document.getElementById('statusBadge');
@@ -423,14 +574,13 @@
       
       let badgeColor = 'text-slate-400';
       if (type === 'success') badgeColor = 'text-emerald-400 font-medium';
-      else if (type === 'warn') badgeColor = 'text-amber-400';
-      else if (type === 'error') badgeColor = 'text-rose-400';
+      else if (type === 'warn') badgeColor = 'text-amber-400 font-medium';
+      else if (type === 'error') badgeColor = 'text-rose-400 font-medium';
 
       el.className = `flex items-center gap-2 ${badgeColor}`;
       el.innerHTML = `<span class="text-slate-500 font-mono">[${now}]</span> <span>${msg}</span>`;
       logBox.prepend(el);
 
-      // Keep maximum 30 log items
       while (logBox.children.length > 30) {
         logBox.removeChild(logBox.lastChild);
       }
@@ -446,8 +596,8 @@
       portionLabel.textContent = `${val} กรัม`;
       playChime('click');
       triggerVibration([20]);
+      requestPushPermission();
 
-      // Highlight active preset button
       document.querySelectorAll('.preset-btn').forEach(btn => {
         if (btn.textContent.includes(`${val}g`)) {
           btn.className = 'preset-btn py-2 rounded-xl bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold active:scale-95 transition-all cursor-pointer';
@@ -563,7 +713,6 @@
           setOnlineState(false);
         }
       } else {
-        // Direct local ping to ESP32
         try {
           const ctrl = new AbortController();
           const tId = setTimeout(() => ctrl.abort(), 2000);
@@ -576,7 +725,7 @@
       }
     }
 
-    // Weight Gauge UI Updaters
+    // Weight Gauge UI Updaters with Real-time Alerts
     function updateHopperUI(weight) {
       hopperWeightEl.textContent = Math.round(weight).toLocaleString();
       const pct = Math.min(100, Math.max(0, Math.round((weight / hopperMax) * 100)));
@@ -587,10 +736,20 @@
         hopperStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-rose-400 pulse-dot"></span> เหลือน้อยแล้ว!';
         hopperStatusTag.className = 'text-rose-400 font-bold flex items-center gap-1';
         hopperBar.className = 'bg-gradient-to-r from-rose-500 to-amber-500 h-full rounded-full transition-all duration-700';
+
+        // แจ้งเตือนในแอปและบนจอมือถือเมื่อลดต่ำกว่า 1.5kg
+        if (!lastHopperAlertState) {
+          lastHopperAlertState = true;
+          showNotificationAlert('⚠️ อาหารในถังเหลือน้อยแล้ว!', `อาหารในถังคงเหลือ ${Math.round(weight)} กรัม (${pct}%) กรุณาเติมอาหาร`, 'warning');
+          log(`⚠️ แจ้งเตือน: อาหารในถังเหลือน้อย (${Math.round(weight)}g / ${pct}%)`, 'warn');
+        }
       } else {
         hopperStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ปกติ';
         hopperStatusTag.className = 'text-emerald-400 font-medium flex items-center gap-1';
         hopperBar.className = 'bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full transition-all duration-700';
+        if (weight >= 1800) {
+          lastHopperAlertState = false; // รีเซ็ตสถานะเมื่อเติมอาหาร
+        }
       }
     }
 
@@ -600,19 +759,39 @@
       bowlPercentEl.textContent = pct;
       bowlBar.style.width = `${pct}%`;
 
-      if (weight < 300) {
-        bowlStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 pulse-dot"></span> เหลือน้อย (&lt;300g)';
+      if (weight >= 850) {
+        bowlStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> อาหารเต็มถาดแล้ว';
+        bowlStatusTag.className = 'text-emerald-400 font-bold flex items-center gap-1';
+        
+        // แจ้งเตือนอาหารเต็มถาด
+        if (!lastBowlFullState) {
+          lastBowlFullState = true;
+          showNotificationAlert('🥣 อาหารเต็มถาดแล้ว!', `อาหารในถาดมี ${Math.round(weight)} กรัม (${pct}%) พร้อมให้น้องหมาทานแล้วครับ`, 'success');
+          log(`🥣 แจ้งเตือน: อาหารเต็มถาดแล้ว (${Math.round(weight)}g / ${pct}%)`, 'success');
+        }
+      } else if (weight < 300) {
+        bowlStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 pulse-dot"></span> เหลือน้อย (<300g)';
         bowlStatusTag.className = 'text-amber-400 font-bold flex items-center gap-1';
+
+        if (!lastBowlLowState) {
+          lastBowlLowState = true;
+          showNotificationAlert('🔔 อาหารในถาดเหลือน้อย!', `อาหารในถาดเหลือ ${Math.round(weight)} กรัม ระบบกำลังเตรียมปล่อยอาหารอัตโนมัติ`, 'warning');
+          log(`🔔 อาหารในถาดเหลือน้อย (${Math.round(weight)}g) ระบบกำลังทำงานอัตโนมัติ`, 'warn');
+        }
       } else {
         bowlStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> อาหารพร้อม';
         bowlStatusTag.className = 'text-emerald-400 font-medium flex items-center gap-1';
       }
+
+      if (weight < 700) lastBowlFullState = false;
+      if (weight >= 400) lastBowlLowState  = false;
     }
 
     // Manual Refresh
     function manualCheck() {
       playChime('click');
       triggerVibration([30]);
+      requestPushPermission();
       if (CONNECT_MODE === 'mqtt') {
         if (mqttClient && mqttClient.connected) {
           mqttClient.publish(`${MQTT_TOPIC}/command`, JSON.stringify({ action: 'telemetry' }));
@@ -633,6 +812,7 @@
 
       playChime('click');
       triggerVibration([50, 60, 50]);
+      requestPushPermission();
 
       feedBtn.disabled = true;
       feedBtnText.textContent = 'กำลังส่งคำสั่งจ่ายอาหาร...';
@@ -662,7 +842,6 @@
             }
           });
         } else {
-          // Local ESP32 Endpoint
           const res = await fetch(`${LOCAL_HOST}/feed`);
           if (res.ok) {
             handleFeedSuccess(portion);
@@ -680,7 +859,6 @@
       playChime('success');
       triggerVibration([60, 80, 100]);
 
-      // Trigger Celebration Confetti
       try {
         confetti({
           particleCount: 70,
@@ -691,6 +869,7 @@
       } catch (e) {}
 
       log(`✅ สั่งจ่ายอาหารสำเร็จ! คำสั่งส่งไปยังบอร์ดแล้ว (~${portion}g)`, 'success');
+      showNotificationAlert('🍖 สั่งจ่ายอาหารสำเร็จ!', `เครื่องกำลังหมุนปล่อยอาหารปริมาณ ~${portion} กรัม`, 'success');
       feedBtnText.textContent = 'สั่งจ่ายอาหารเรียบร้อย!';
       feedBtnIcon.className = 'text-2xl';
 
@@ -715,6 +894,7 @@
       document.getElementById('localHostInput').value  = LOCAL_HOST;
       setConnectionMode(CONNECT_MODE, false);
       playChime('click');
+      requestPushPermission();
     }
 
     function closeSettings() {
@@ -799,14 +979,15 @@
     }
 
     function openInstallPrompt() {
-      // Check if iOS
       const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       if (isIos) {
         document.getElementById('iosInstallModal').classList.remove('hidden');
       } else if (deferredPrompt) {
         deferredPrompt.prompt();
       } else {
-        alert('เคล็ดลับการติดตั้งแอป:\n• ใน Google Chrome / Edge: กดจุด 3 จุดมุมขวาบน > เลือก "ติดตั้งแอป" (Install App)\n• ใน Safari บน iPhone: กดปุ่ม Share > "เพิ่มไปยังหน้าจอโฮม"');
+        alert('เคล็ดลับการติดตั้งแอป:
+• ใน Google Chrome / Edge: กดจุด 3 จุดมุมขวาบน > เลือก "ติดตั้งแอป" (Install App)
+• ใน Safari บน iPhone: กดปุ่ม Share > "เพิ่มไปยังหน้าจอโฮม"');
       }
     }
 
