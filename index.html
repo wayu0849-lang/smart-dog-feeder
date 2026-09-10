@@ -22,6 +22,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
 
   <style>
     * { -webkit-tap-highlight-color: transparent; }
@@ -113,23 +114,34 @@
         <div>
           <label class="block font-medium text-slate-300 mb-1.5">โหมดการเชื่อมต่อ (Connection Mode)</label>
           <div class="grid grid-cols-2 gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
-            <button id="modeBlynkBtn" onclick="setConnectionMode('blynk')" class="py-2 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 bg-indigo-600 text-white shadow cursor-pointer">
-              <span>☁️</span> Blynk Cloud
+            <button id="modeMqttBtn" onclick="setConnectionMode('mqtt')" class="py-2 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 bg-indigo-600 text-white shadow cursor-pointer">
+              <span>☁️</span> MQTT Cloud
             </button>
             <button id="modeLocalBtn" onclick="setConnectionMode('local')" class="py-2 rounded-lg font-medium text-slate-400 hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer">
               <span>🏠</span> Wi-Fi ตรงในบ้าน
             </button>
           </div>
           <p class="text-[11px] text-slate-400 mt-1" id="modeHintText">
-            โหมด Blynk Cloud: ควบคุมได้จากทุกที่ทั่วโลกผ่านเน็ต 4G/5G/Wi-Fi
+            โหมด MQTT Cloud: มาตรฐาน IoT สากล ควบคุมได้จากทุกที่ทั่วโลกผ่านเน็ต 4G/5G/Wi-Fi
           </p>
         </div>
 
-        <!-- Blynk Auth Token -->
-        <div id="blynkConfigGroup">
-          <label class="block font-medium text-slate-300 mb-1">Blynk Auth Token</label>
-          <input id="blynkTokenInput" type="text" value="cjMG-Zj8fq9eFxRcuu-cpn6ZgMIhjRLN" 
-            class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 font-mono text-indigo-300 text-xs focus:outline-none focus:border-indigo-500">
+        <!-- MQTT Config Group -->
+        <div id="mqttConfigGroup" class="space-y-3">
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">MQTT Broker (WebSocket SSL)</label>
+            <input id="mqttBrokerInput" type="text" value="wss://broker.emqx.io:8084/mqtt" 
+              placeholder="wss://broker.emqx.io:8084/mqtt"
+              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 font-mono text-cyan-300 text-xs focus:outline-none focus:border-cyan-500">
+            <span class="text-[10px] text-slate-500">ฟรี Public EMQX Broker (พอร์ต 8084 WSS)</span>
+          </div>
+          <div>
+            <label class="block font-medium text-slate-300 mb-1">MQTT Project Topic Prefix</label>
+            <input id="mqttTopicInput" type="text" value="dogfeeder/wayu0849" 
+              placeholder="dogfeeder/wayu0849"
+              class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 font-mono text-indigo-300 text-xs focus:outline-none focus:border-indigo-500">
+            <span class="text-[10px] text-slate-500">หัวข้อข้อมูลประจำบอร์ด (ตรงกับในโค้ด ESP32)</span>
+          </div>
         </div>
 
         <!-- Local ESP32 IP -->
@@ -278,7 +290,7 @@
           <h2 class="text-base font-bold text-white">สั่งให้อาหาร (Feed Control)</h2>
         </div>
         <div id="activeModeBadge" class="text-[11px] px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono">
-          โหมด: Blynk Cloud
+          โหมด: MQTT Cloud
         </div>
       </div>
 
@@ -360,72 +372,20 @@
     <footer class="text-center text-[11px] text-slate-500 pt-3 pb-6 space-y-1">
       <div class="font-medium text-slate-400">โครงงานวิชาชีพ: เครื่องให้อาหารสุนัขอัจฉริยะ (Smart Dog Feeder)</div>
       <div>สาขาวิชาเทคโนโลยีคอมพิวเตอร์ วิทยาลัยเทคนิคลพบุรี</div>
-      <div class="text-[10px] text-slate-600">ESP32 • Load Cell 5kg x2 • Servo MG996R • Blynk IoT • Telegram</div>
+      <div class="text-[10px] text-slate-600">ESP32 • Load Cell 5kg x2 • Servo MG996R • MQTT Protocol • Telegram Bot</div>
     </footer>
 
   </div>
 
   <!-- Audio Context Synthesizer (Zero External Audio File Dependencies) -->
-  <script>
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    let audioCtx = null;
+  <script    // Configuration & State
+    let MQTT_BROKER  = localStorage.getItem('dogfeeder_mqtt_broker') || 'wss://broker.emqx.io:8084/mqtt';
+    let MQTT_TOPIC   = localStorage.getItem('dogfeeder_mqtt_topic')  || 'dogfeeder/wayu0849';
+    let LOCAL_HOST    = localStorage.getItem('dogfeeder_local_host')   || 'http://dogfeeder.local';
+    let CONNECT_MODE  = localStorage.getItem('dogfeeder_mode')         || 'mqtt'; // 'mqtt' or 'local'
 
-    function playChime(type = 'click') {
-      if (!document.getElementById('soundToggle').checked) return;
-      try {
-        if (!audioCtx) audioCtx = new AudioContext();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
-
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-
-        const now = audioCtx.currentTime;
-        if (type === 'click') {
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(587.33, now); // D5
-          osc.frequency.exponentialRampToValueAtTime(880, now + 0.08); // A5
-          gain.gain.setValueAtTime(0.15, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-          osc.start(now);
-          osc.stop(now + 0.1);
-        } else if (type === 'success') {
-          // Cheerful chime: C5 -> E5 -> G5
-          [523.25, 659.25, 783.99].forEach((freq, i) => {
-            const o = audioCtx.createOscillator();
-            const g = audioCtx.createGain();
-            o.connect(g);
-            g.connect(audioCtx.destination);
-            o.type = 'triangle';
-            o.frequency.setValueAtTime(freq, now + i * 0.09);
-            g.gain.setValueAtTime(0.18, now + i * 0.09);
-            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.09 + 0.2);
-            o.start(now + i * 0.09);
-            o.stop(now + i * 0.09 + 0.2);
-          });
-        }
-      } catch (e) {
-        console.warn('Audio play failed:', e);
-      }
-    }
-
-    function triggerVibration(pattern = [40]) {
-      if (!document.getElementById('vibrateToggle').checked) return;
-      if (navigator.vibrate) {
-        navigator.vibrate(pattern);
-      }
-    }
-  </script>
-
-  <!-- Main Application Logic & PWA Service Worker -->
-  <script>
-    // Configuration & State
-    let BLYNK_TOKEN = localStorage.getItem('dogfeeder_blynk_token') || 'cjMG-Zj8fq9eFxRcuu-cpn6ZgMIhjRLN';
-    let LOCAL_HOST = localStorage.getItem('dogfeeder_local_host') || 'http://dogfeeder.local';
-    let CONNECT_MODE = localStorage.getItem('dogfeeder_mode') || 'blynk'; // 'blynk' or 'local'
-
-    const BLYNK_SERVER = 'https://blynk.cloud/external/api';
+    let mqttClient = null;
+    let mqttConnected = false;
     const hopperMax = 5000; // 5000g (5kg)
     const bowlMax   = 1000; // 1000g (1kg)
 
@@ -447,13 +407,13 @@
     const bowlBar       = document.getElementById('bowlBar');
     const bowlStatusTag = document.getElementById('bowlStatusTag');
 
-    const portionSlider  = document.getElementById('portionSlider');
-    const portionLabel   = document.getElementById('portionLabel');
-    const feedBtn        = document.getElementById('feedBtn');
-    const feedBtnText    = document.getElementById('feedBtnText');
-    const feedBtnIcon    = document.getElementById('feedBtnIcon');
-    const feedNotice     = document.getElementById('feedNotice');
-    const logBox         = document.getElementById('logBox');
+    const portionSlider   = document.getElementById('portionSlider');
+    const portionLabel    = document.getElementById('portionLabel');
+    const feedBtn         = document.getElementById('feedBtn');
+    const feedBtnText     = document.getElementById('feedBtnText');
+    const feedBtnIcon     = document.getElementById('feedBtnIcon');
+    const feedNotice      = document.getElementById('feedNotice');
+    const logBox          = document.getElementById('logBox');
     const activeModeBadge = document.getElementById('activeModeBadge');
 
     // Activity Log Handler
@@ -501,30 +461,7 @@
       portionLabel.textContent = `${e.target.value} กรัม`;
     });
 
-    // Device Status Check
-    async function checkDeviceStatus() {
-      if (CONNECT_MODE === 'blynk') {
-        try {
-          const res = await fetch(`${BLYNK_SERVER}/isHardwareConnected?token=${BLYNK_TOKEN}`);
-          const isOnline = (await res.text()).trim() === 'true';
-          setOnlineState(isOnline);
-        } catch (e) {
-          setOnlineState(false);
-        }
-      } else {
-        // Direct local ping to ESP32
-        try {
-          const ctrl = new AbortController();
-          const tId = setTimeout(() => ctrl.abort(), 2000);
-          const res = await fetch(`${LOCAL_HOST}/`, { signal: ctrl.signal, mode: 'no-cors' });
-          clearTimeout(tId);
-          setOnlineState(true);
-        } catch (e) {
-          setOnlineState(false);
-        }
-      }
-    }
-
+    // Online/Offline UI State
     function setOnlineState(isOnline) {
       if (isOnline) {
         statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399]';
@@ -537,30 +474,111 @@
       }
     }
 
-    // Weight Data Polling
-    async function fetchWeights() {
-      if (CONNECT_MODE === 'blynk') {
+    // MQTT Protocol Connection
+    function initMQTT() {
+      if (mqttClient) {
+        try { mqttClient.end(true); } catch (e) {}
+        mqttClient = null;
+      }
+      if (CONNECT_MODE !== 'mqtt') return;
+
+      const randomId = 'feeder_app_' + Math.random().toString(16).substring(2, 10);
+      const cleanBrokerName = MQTT_BROKER.replace('wss://', '').replace('/mqtt', '').split(':')[0];
+      log(`📡 กำลังเชื่อมต่อ MQTT Broker (${cleanBrokerName})...`, 'normal');
+      setOnlineState(false);
+
+      try {
+        mqttClient = mqtt.connect(MQTT_BROKER, {
+          clientId: randomId,
+          clean: true,
+          connectTimeout: 7000,
+          reconnectPeriod: 4000
+        });
+
+        mqttClient.on('connect', () => {
+          mqttConnected = true;
+          log('🟢 เชื่อมต่อ MQTT Broker สำเร็จ!', 'success');
+          
+          const tTelemetry = `${MQTT_TOPIC}/telemetry`;
+          const tStatus    = `${MQTT_TOPIC}/status`;
+          const tAck       = `${MQTT_TOPIC}/ack`;
+
+          mqttClient.subscribe([tTelemetry, tStatus, tAck], (err) => {
+            if (!err) {
+              log(`📡 ติดตาม Topic: ${MQTT_TOPIC}/#`, 'normal');
+            }
+          });
+        });
+
+        mqttClient.on('message', (topic, payload) => {
+          const msg = payload.toString();
+
+          if (topic === `${MQTT_TOPIC}/status`) {
+            const isOnline = msg.trim().toLowerCase() === 'online';
+            setOnlineState(isOnline);
+            if (isOnline) {
+              log('🟢 บอร์ด ESP32 เชื่อมต่อออนไลน์แล้ว', 'success');
+            } else {
+              log('🔴 บอร์ด ESP32 ออฟไลน์', 'warn');
+            }
+          } else if (topic === `${MQTT_TOPIC}/telemetry`) {
+            try {
+              const data = JSON.parse(msg);
+              if (data.hopper !== undefined) updateHopperUI(Number(data.hopper));
+              if (data.bowl !== undefined) updateBowlUI(Number(data.bowl));
+              setOnlineState(true);
+            } catch (err) {
+              console.warn('Telemetry parse error:', err);
+            }
+          } else if (topic === `${MQTT_TOPIC}/ack`) {
+            log(`📥 ตอบรับจากบอร์ด: ${msg}`, 'success');
+          }
+        });
+
+        mqttClient.on('error', (err) => {
+          console.warn('MQTT connection error:', err);
+          mqttConnected = false;
+          setOnlineState(false);
+        });
+
+        mqttClient.on('offline', () => {
+          mqttConnected = false;
+          setOnlineState(false);
+        });
+
+        mqttClient.on('reconnect', () => {
+          // Reconnecting
+        });
+
+      } catch (err) {
+        console.error('MQTT setup error:', err);
+        setOnlineState(false);
+      }
+    }
+
+    // Device Status Check (Local Wi-Fi or MQTT)
+    async function checkDeviceStatus() {
+      if (CONNECT_MODE === 'mqtt') {
+        if (!mqttClient || !mqttClient.connected) {
+          setOnlineState(false);
+        }
+      } else {
+        // Direct local ping to ESP32
         try {
-          // Read V0 (Hopper)
-          const resHopper = await fetch(`${BLYNK_SERVER}/get?token=${BLYNK_TOKEN}&V0`);
-          if (resHopper.ok) {
-            const wH = parseInt(await resHopper.text()) || 0;
-            updateHopperUI(wH);
-          }
-          // Read V1 (Bowl)
-          const resBowl = await fetch(`${BLYNK_SERVER}/get?token=${BLYNK_TOKEN}&V1`);
-          if (resBowl.ok) {
-            const wB = parseInt(await resBowl.text()) || 0;
-            updateBowlUI(wB);
-          }
-        } catch (err) {
-          console.warn('Blynk fetch error:', err);
+          const ctrl = new AbortController();
+          const tId = setTimeout(() => ctrl.abort(), 2000);
+          await fetch(`${LOCAL_HOST}/`, { signal: ctrl.signal, mode: 'no-cors' });
+          clearTimeout(tId);
+          setOnlineState(true);
+        } catch (e) {
+          setOnlineState(false);
         }
       }
     }
 
+    // Weight Gauge UI Updaters
     function updateHopperUI(weight) {
-      hopperWeightEl.textContent = weight.toLocaleString();
+      hopperWeightEl.textContent = Math.round(weight).toLocaleString();
       const pct = Math.min(100, Math.max(0, Math.round((weight / hopperMax) * 100)));
       hopperPercentEl.textContent = pct;
       hopperBar.style.width = `${pct}%`;
@@ -577,7 +595,7 @@
     }
 
     function updateBowlUI(weight) {
-      bowlWeightEl.textContent = weight.toLocaleString();
+      bowlWeightEl.textContent = Math.round(weight).toLocaleString();
       const pct = Math.min(100, Math.max(0, Math.round((weight / bowlMax) * 100)));
       bowlPercentEl.textContent = pct;
       bowlBar.style.width = `${pct}%`;
@@ -595,9 +613,17 @@
     function manualCheck() {
       playChime('click');
       triggerVibration([30]);
-      checkDeviceStatus();
-      fetchWeights();
-      log('🔄 รีเฟรชข้อมูลเซนเซอร์ล่าสุดแล้ว', 'normal');
+      if (CONNECT_MODE === 'mqtt') {
+        if (mqttClient && mqttClient.connected) {
+          mqttClient.publish(`${MQTT_TOPIC}/command`, JSON.stringify({ action: 'telemetry' }));
+          log('🔄 ส่งคำขอข้อมูลเซนเซอร์ล่าสุดผ่าน MQTT...', 'normal');
+        } else {
+          initMQTT();
+        }
+      } else {
+        checkDeviceStatus();
+        log('🔄 รีเฟรชสถานะอุปกรณ์ในเครือข่าย Wi-Fi...', 'normal');
+      }
     }
 
     // Trigger Feed Action
@@ -609,7 +635,7 @@
       triggerVibration([50, 60, 50]);
 
       feedBtn.disabled = true;
-      feedBtnText.textContent = 'กำลังสั่งจ่ายอาหาร...';
+      feedBtnText.textContent = 'กำลังส่งคำสั่งจ่ายอาหาร...';
       feedBtnIcon.className = 'text-2xl animate-spin';
       feedNotice.classList.remove('hidden');
 
@@ -617,18 +643,24 @@
       log(`🍗 สั่งจ่ายอาหาร ${portion} กรัม ไปยังเครื่อง...`, 'normal');
 
       try {
-        if (CONNECT_MODE === 'blynk') {
-          // Send V3 = 1 to trigger dispense
-          const res = await fetch(`${BLYNK_SERVER}/update?token=${BLYNK_TOKEN}&V3=1`);
-          if (res.ok) {
-            handleFeedSuccess(portion);
-            // Reset V3 pin back to 0
-            setTimeout(() => {
-              fetch(`${BLYNK_SERVER}/update?token=${BLYNK_TOKEN}&V3=0`);
-            }, 3000);
-          } else {
-            throw new Error('Blynk API error');
+        if (CONNECT_MODE === 'mqtt') {
+          if (!mqttClient || !mqttClient.connected) {
+            throw new Error('MQTT broker is not connected');
           }
+          const payload = JSON.stringify({
+            action: 'feed',
+            portion: parseInt(portion),
+            timestamp: Date.now()
+          });
+
+          mqttClient.publish(`${MQTT_TOPIC}/command`, payload, { qos: 0 }, (err) => {
+            if (err) {
+              log('❌ ส่งคำสั่งผ่าน MQTT ล้มเหลว', 'error');
+              resetFeedButton();
+            } else {
+              handleFeedSuccess(portion);
+            }
+          });
         } else {
           // Local ESP32 Endpoint
           const res = await fetch(`${LOCAL_HOST}/feed`);
@@ -658,13 +690,12 @@
         });
       } catch (e) {}
 
-      log(`✅ สั่งจ่ายอาหารสำเร็จ! ปริมาณ ~${portion} กรัม`, 'success');
-      feedBtnText.textContent = 'ปล่อยอาหารเรียบร้อย!';
+      log(`✅ สั่งจ่ายอาหารสำเร็จ! คำสั่งส่งไปยังบอร์ดแล้ว (~${portion}g)`, 'success');
+      feedBtnText.textContent = 'สั่งจ่ายอาหารเรียบร้อย!';
       feedBtnIcon.className = 'text-2xl';
 
       setTimeout(() => {
         resetFeedButton();
-        fetchWeights();
       }, 3500);
     }
 
@@ -679,8 +710,9 @@
     // Settings Modal
     function openSettings() {
       document.getElementById('settingsModal').classList.remove('hidden');
-      document.getElementById('blynkTokenInput').value = BLYNK_TOKEN;
-      document.getElementById('localHostInput').value = LOCAL_HOST;
+      document.getElementById('mqttBrokerInput').value = MQTT_BROKER;
+      document.getElementById('mqttTopicInput').value  = MQTT_TOPIC;
+      document.getElementById('localHostInput').value  = LOCAL_HOST;
       setConnectionMode(CONNECT_MODE, false);
       playChime('click');
     }
@@ -692,24 +724,24 @@
 
     function setConnectionMode(mode, save = true) {
       CONNECT_MODE = mode;
-      const blynkBtn = document.getElementById('modeBlynkBtn');
+      const mqttBtn  = document.getElementById('modeMqttBtn');
       const localBtn = document.getElementById('modeLocalBtn');
-      const bGroup   = document.getElementById('blynkConfigGroup');
+      const mGroup   = document.getElementById('mqttConfigGroup');
       const lGroup   = document.getElementById('localConfigGroup');
       const hint     = document.getElementById('modeHintText');
 
-      if (mode === 'blynk') {
-        blynkBtn.className = 'py-2 rounded-lg font-bold bg-indigo-600 text-white shadow flex items-center justify-center gap-1.5 cursor-pointer';
+      if (mode === 'mqtt') {
+        mqttBtn.className  = 'py-2 rounded-lg font-bold bg-indigo-600 text-white shadow flex items-center justify-center gap-1.5 cursor-pointer';
         localBtn.className = 'py-2 rounded-lg font-medium text-slate-400 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer';
-        bGroup.classList.remove('hidden');
+        mGroup.classList.remove('hidden');
         lGroup.classList.add('hidden');
-        hint.textContent = 'โหมด Blynk Cloud: ควบคุมได้จากทุกที่ทั่วโลกผ่านเน็ต 4G/5G/Wi-Fi';
-        activeModeBadge.textContent = 'โหมด: Blynk Cloud';
+        hint.textContent = 'โหมด MQTT Cloud: มาตรฐาน IoT สากล ควบคุมได้จากทุกที่ทั่วโลกผ่านเน็ต 4G/5G/Wi-Fi';
+        activeModeBadge.textContent = 'โหมด: MQTT Cloud';
       } else {
         localBtn.className = 'py-2 rounded-lg font-bold bg-emerald-600 text-white shadow flex items-center justify-center gap-1.5 cursor-pointer';
-        blynkBtn.className = 'py-2 rounded-lg font-medium text-slate-400 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer';
+        mqttBtn.className  = 'py-2 rounded-lg font-medium text-slate-400 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer';
         lGroup.classList.remove('hidden');
-        bGroup.classList.add('hidden');
+        mGroup.classList.add('hidden');
         hint.textContent = 'โหมด Wi-Fi ในบ้าน: ควบคุมตรงไปที่บอร์ด ESP32 ไม่ต้องพึ่งเน็ตนอกบ้าน';
         activeModeBadge.textContent = 'โหมด: Wi-Fi ในบ้าน';
       }
@@ -721,16 +753,23 @@
     }
 
     function saveSettings() {
-      BLYNK_TOKEN = document.getElementById('blynkTokenInput').value.trim();
+      MQTT_BROKER = document.getElementById('mqttBrokerInput').value.trim();
+      MQTT_TOPIC  = document.getElementById('mqttTopicInput').value.trim();
       LOCAL_HOST  = document.getElementById('localHostInput').value.trim();
-      localStorage.setItem('dogfeeder_blynk_token', BLYNK_TOKEN);
+
+      localStorage.setItem('dogfeeder_mqtt_broker', MQTT_BROKER);
+      localStorage.setItem('dogfeeder_mqtt_topic', MQTT_TOPIC);
       localStorage.setItem('dogfeeder_local_host', LOCAL_HOST);
 
       log('💾 บันทึกการตั้งค่าเรียบร้อยแล้ว', 'success');
       playChime('success');
       closeSettings();
-      checkDeviceStatus();
-      fetchWeights();
+
+      if (CONNECT_MODE === 'mqtt') {
+        initMQTT();
+      } else {
+        checkDeviceStatus();
+      }
     }
 
     // PWA Installation Handlers
@@ -767,7 +806,7 @@
       } else if (deferredPrompt) {
         deferredPrompt.prompt();
       } else {
-        alert('เคล็ดลับการติดตั้งแอป:\\n• ใน Google Chrome / Edge: กดจุด 3 จุดมุมขวาบน > เลือก "ติดตั้งแอป" (Install App)\\n• ใน Safari บน iPhone: กดปุ่ม Share > "เพิ่มไปยังหน้าจอโฮม"');
+        alert('เคล็ดลับการติดตั้งแอป:\n• ใน Google Chrome / Edge: กดจุด 3 จุดมุมขวาบน > เลือก "ติดตั้งแอป" (Install App)\n• ใน Safari บน iPhone: กดปุ่ม Share > "เพิ่มไปยังหน้าจอโฮม"');
       }
     }
 
@@ -784,13 +823,15 @@
       });
     }
 
-    // Auto Refresh Intervals
-    checkDeviceStatus();
-    fetchWeights();
+    // Initialize System
+    if (CONNECT_MODE === 'mqtt') {
+      initMQTT();
+    } else {
+      checkDeviceStatus();
+    }
     setInterval(checkDeviceStatus, 5000);
-    setInterval(fetchWeights, 2500);
 
-    log('🚀 ระบบ Smart Dog Feeder Web App พร้อมทำงาน!', 'success');
+    log('🚀 ระบบ Smart Dog Feeder Web App (MQTT Edition) พร้อมทำงาน!', 'success');
   </script>
 </body>
 </html>
