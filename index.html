@@ -313,17 +313,17 @@
           <span>เลือกปริมาณด่วน (Quick Presets):</span>
           <span class="text-indigo-400 font-mono font-bold text-sm" id="portionLabel">50 กรัม</span>
         </div>
-        <div class="grid grid-cols-4 gap-2">
-          <button type="button" onclick="selectPreset(30)" class="preset-btn py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all cursor-pointer">
+        <div class="grid grid-cols-4 gap-2" id="presetGroup">
+          <button type="button" data-gram="30" class="preset-btn py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all cursor-pointer">
             30g <span class="text-[10px] text-slate-400 block font-normal">หมาเล็ก</span>
           </button>
-          <button type="button" onclick="selectPreset(50)" class="preset-btn py-2 rounded-xl bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold active:scale-95 transition-all cursor-pointer">
+          <button type="button" data-gram="50" class="preset-btn py-2 rounded-xl bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold active:scale-95 transition-all cursor-pointer">
             50g <span class="text-[10px] text-indigo-400 block font-normal">ขนาดกลาง</span>
           </button>
-          <button type="button" onclick="selectPreset(80)" class="preset-btn py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all cursor-pointer">
+          <button type="button" data-gram="80" class="preset-btn py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all cursor-pointer">
             80g <span class="text-[10px] text-slate-400 block font-normal">หมาโต</span>
           </button>
-          <button type="button" onclick="selectPreset(120)" class="preset-btn py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all cursor-pointer">
+          <button type="button" data-gram="120" class="preset-btn py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all cursor-pointer">
             120g <span class="text-[10px] text-slate-400 block font-normal">ชามใหญ่</span>
           </button>
         </div>
@@ -524,8 +524,17 @@
 
   <!-- Main Application Logic & PWA Service Worker -->
   <script>
+    // Global Error Handler — แสดง error บนหน้าจอ (ลบออกได้ภายหลัง)
+    window.onerror = function(msg, src, line, col, err) {
+      var errDiv = document.createElement('div');
+      errDiv.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:red;color:white;padding:10px;font-size:12px;z-index:9999;word-break:break-all;';
+      errDiv.textContent = 'JS Error: ' + msg + ' (line ' + line + ')';
+      document.body.appendChild(errDiv);
+    };
+
+    var APP_VERSION = '2.1.0';
     // Configuration & State
-    let MQTT_BROKER  = localStorage.getItem('dogfeeder_mqtt_broker') || 'wss://broker.emqx.io:8084/mqtt';
+    var MQTT_BROKER  = localStorage.getItem('dogfeeder_mqtt_broker') || 'wss://broker.emqx.io:8084/mqtt';
     let MQTT_TOPIC   = localStorage.getItem('dogfeeder_mqtt_topic')  || 'dogfeeder/wayu0849';
     let LOCAL_HOST    = localStorage.getItem('dogfeeder_local_host')   || 'http://dogfeeder.local';
     let CONNECT_MODE  = localStorage.getItem('dogfeeder_mode')         || 'mqtt'; // 'mqtt' or 'local'
@@ -590,25 +599,43 @@
       logBox.innerHTML = '<div class="text-slate-500">[ล้างบันทึกเรียบร้อย]</div>';
     }
 
-    // Portion Preset Select
+    // Portion Preset Select — Event Delegation (ป้องกัน onclick ไม่ทำงาน)
     function selectPreset(val) {
-      portionSlider.value = val;
-      portionLabel.textContent = `${val} กรัม`;
-      playChime('click');
-      triggerVibration([20]);
-      requestPushPermission();
+      try {
+        portionSlider.value = val;
+        portionLabel.textContent = val + ' กรัม';
+        try { playChime('click'); } catch(e) {}
+        try { triggerVibration([20]); } catch(e) {}
+        try { requestPushPermission(); } catch(e) {}
 
-      document.querySelectorAll('.preset-btn').forEach(btn => {
-        if (btn.textContent.includes(`${val}g`)) {
-          btn.className = 'preset-btn py-2 rounded-xl bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold active:scale-95 transition-all cursor-pointer';
-        } else {
-          btn.className = 'preset-btn py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all cursor-pointer';
-        }
-      });
+        document.querySelectorAll('.preset-btn').forEach(function(btn) {
+          var gram = btn.getAttribute('data-gram');
+          if (gram == val) {
+            btn.className = 'preset-btn py-2 rounded-xl bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold active:scale-95 transition-all cursor-pointer';
+          } else {
+            btn.className = 'preset-btn py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-xs font-semibold text-slate-300 border border-slate-700/80 transition-all cursor-pointer';
+          }
+        });
+      } catch (err) {
+        alert('selectPreset error: ' + err.message);
+      }
     }
 
-    portionSlider.addEventListener('input', (e) => {
-      portionLabel.textContent = `${e.target.value} กรัม`;
+    // Wire up preset buttons via addEventListener (ทำงานได้ 100%)
+    document.querySelectorAll('.preset-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var gram = this.getAttribute('data-gram');
+        if (gram) selectPreset(Number(gram));
+      });
+      btn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        var gram = this.getAttribute('data-gram');
+        if (gram) selectPreset(Number(gram));
+      });
+    });
+
+    portionSlider.addEventListener('input', function(e) {
+      portionLabel.textContent = e.target.value + ' กรัม';
     });
 
     // Online/Offline UI State
@@ -1030,14 +1057,26 @@
     }
 
     // Initialize System
-    if (CONNECT_MODE === 'mqtt') {
-      initMQTT();
-    } else {
-      checkDeviceStatus();
+    try {
+      if (CONNECT_MODE === 'mqtt') {
+        if (typeof mqtt !== 'undefined') {
+          initMQTT();
+        } else {
+          log('⚠️ MQTT library ยังโหลดไม่เสร็จ — กำลังรอ...', 'warn');
+          setTimeout(function() {
+            if (typeof mqtt !== 'undefined') initMQTT();
+            else log('❌ ไม่สามารถโหลด MQTT library ได้', 'error');
+          }, 3000);
+        }
+      } else {
+        checkDeviceStatus();
+      }
+    } catch(e) {
+      log('⚠️ Error initializing: ' + e.message, 'error');
     }
     setInterval(checkDeviceStatus, 5000);
 
-    log('🚀 ระบบ Smart Dog Feeder Web App (MQTT Edition) พร้อมทำงาน!', 'success');
+    log('🚀 Smart Dog Feeder v' + APP_VERSION + ' พร้อมทำงาน!', 'success');
   </script>
 </body>
 </html>
