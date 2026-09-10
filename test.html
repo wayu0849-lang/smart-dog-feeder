@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ทดสอบปุ่ม Preset</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; }
+  </style>
+</head>
+<body>
+  <h1 style="font-size:20px; margin-bottom:15px;">🧪 ทดสอบปุ่ม Preset</h1>
+
+  <p id="result" style="font-size:24px; color:#6366f1; margin-bottom:15px;">ยังไม่ได้กด</p>
+
+  <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:20px;">
+    <button id="btn30" style="padding:12px; background:#334155; color:white; border:2px solid #475569; border-radius:12px; font-size:14px; font-weight:bold; cursor:pointer;">30g</button>
+    <button id="btn50" style="padding:12px; background:#4f46e5; color:white; border:2px solid #6366f1; border-radius:12px; font-size:14px; font-weight:bold; cursor:pointer;">50g</button>
+    <button id="btn80" style="padding:12px; background:#334155; color:white; border:2px solid #475569; border-radius:12px; font-size:14px; font-weight:bold; cursor:pointer;">80g</button>
+    <button id="btn120" style="padding:12px; background:#334155; color:white; border:2px solid #475569; border-radius:12px; font-size:14px; font-weight:bold; cursor:pointer;">120g</button>
+  </div>
+
+  <input id="slider" type="range" min="20" max="200" step="5" value="50" style="width:100%; margin-bottom:10px;">
+
+  <div id="log" style="background:#1e293b; padding:12px; border-radius:8px; font-size:12px; color:#94a3b8;"></div>
+
+  <script>
+    var result = document.getElementById('result');
+    var slider = document.getElementById('slider');
+    var logEl = document.getElementById('log');
+
+    function addLog(msg) {
+      var p = document.createElement('div');
+      p.textContent = new Date().toLocaleTimeString() + ' — ' + msg;
+      logEl.prepend(p);
+    }
+
+    function pick(val) {
+      slider.value = val;
+      result.textContent = 'เลือก: ' + val + ' กรัม ✅';
+
+      // Highlight selected
+      ['btn30','btn50','btn80','btn120'].forEach(function(id) {
+        var b = document.getElementById(id);
+        if (b.textContent.trim() === val + 'g') {
+          b.style.background = '#4f46e5';
+          b.style.borderColor = '#6366f1';
+        } else {
+          b.style.background = '#334155';
+          b.style.borderColor = '#475569';
+        }
+      });
+
+      addLog('กดปุ่ม ' + val + 'g สำเร็จ!');
+    }
+
+    // Wire buttons
+    document.getElementById('btn30').addEventListener('click', function() { pick(30); });
+    document.getElementById('btn50').addEventListener('click', function() { pick(50); });
+    document.getElementById('btn80').addEventListener('click', function() { pick(80); });
+    document.getElementById('btn120').addEventListener('click', function() { pick(120); });
+
+    slider.addEventListener('input', function() {
+      result.textContent = 'Slider: ' + slider.value + ' กรัม';
+    });
+
+    addLog('หน้าทดสอบโหลดเรียบร้อย — ลองกดปุ่ม 30g, 80g, 120g ดูครับ');
+  </script>
+</body>
+</html>
