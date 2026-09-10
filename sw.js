@@ -1,6 +1,6 @@
 // Smart Dog Feeder PWA Service Worker
-// v2.0.0 — MQTT Protocol, Network-First for HTML
-const CACHE_NAME = 'dogfeeder-v2.0.0';
+// v2.1.0 — Force reload clients on update, network-first HTML
+const CACHE_NAME = 'dogfeeder-v2.1.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -21,33 +21,39 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate: Delete ALL old caches & take control of all clients
+// Activate: Delete ALL old caches, take control, then force-reload all open pages
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            console.log('[SW] Deleting old cache:', key);
-            return caches.delete(key);
-          }
+        keys.filter((key) => key !== CACHE_NAME).map((key) => {
+          console.log('[SW] Deleting old cache:', key);
+          return caches.delete(key);
         })
       );
+    }).then(() => {
+      return self.clients.claim();
+    }).then(() => {
+      // Force all open tabs to reload with new content
+      return self.clients.matchAll({ type: 'window' });
+    }).then((windowClients) => {
+      windowClients.forEach((client) => {
+        client.navigate(client.url);
+      });
     })
   );
-  self.clients.claim();
 });
 
 // Fetch: Network-First for HTML, Cache-First for static assets
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Bypass cache for MQTT WebSocket, API calls, and local ESP32 endpoints
+  // Bypass cache for WebSocket, MQTT, API calls
   if (url.protocol === 'wss:' || url.protocol === 'ws:' ||
       url.hostname.includes('emqx') || url.hostname.includes('mqtt') ||
       url.pathname.includes('/api') || url.pathname.includes('/feed') ||
       url.port === '80') {
-    return; // Normal network request, no caching
+    return;
   }
 
   // Network-First for HTML documents (always get latest version)
@@ -55,13 +61,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          // Update cache with fresh copy
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;
         })
         .catch(() => {
-          // Offline fallback: serve from cache
           return caches.match(event.request).then((cached) => {
             return cached || caches.match('./index.html');
           });
@@ -70,7 +74,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-First for static assets (icons, manifest, etc.)
+  // Network-First for sw.js itself
+  if (event.request.url.endsWith('sw.js')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // Cache-First for static assets (icons, manifest)
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -80,9 +90,7 @@ self.addEventListener('fetch', (event) => {
         const clone = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         return response;
-      }).catch(() => {
-        // Offline: nothing to serve
-      });
+      }).catch(() => {});
     })
   );
 });

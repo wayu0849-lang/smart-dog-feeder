@@ -995,11 +995,36 @@
       document.getElementById('iosInstallModal').classList.add('hidden');
     }
 
-    // Register Service Worker
+    // Register Service Worker (v2.1 — force clear old caches & auto-reload)
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then((reg) => console.log('PWA Service Worker registered:', reg.scope))
+      // Auto-reload when new SW takes control
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          console.log('[App] New Service Worker activated — reloading page...');
+          window.location.reload();
+        }
+      });
+
+      window.addEventListener('load', async () => {
+        // Force clear ALL old caches first
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          for (const key of keys) {
+            if (!key.includes('v2.1')) {
+              await caches.delete(key);
+              console.log('[App] Deleted old cache:', key);
+            }
+          }
+        }
+        // Register SW with cache-busting version
+        navigator.serviceWorker.register('./sw.js?v=2.1.0')
+          .then((reg) => {
+            console.log('PWA Service Worker registered:', reg.scope);
+            // Force check for updates
+            reg.update();
+          })
           .catch((err) => console.warn('Service Worker registration failed:', err));
       });
     }
