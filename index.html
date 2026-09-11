@@ -674,7 +674,11 @@
 
           mqttClient.subscribe([tTelemetry, tStatus, tAck], (err) => {
             if (!err) {
-              log(`📡 ติดตาม Topic: ${MQTT_TOPIC}/#`, 'normal');
+              log(`📡 กำลังรับข้อมูลจาก: ${MQTT_TOPIC}/#`, 'normal');
+              // ร้องขอข้อมูลค่าน้ำหนักล่าสุดทันที
+              try {
+                mqttClient.publish(`${MQTT_TOPIC}/command`, JSON.stringify({ action: 'telemetry' }));
+              } catch (e) {}
             }
           });
         });
