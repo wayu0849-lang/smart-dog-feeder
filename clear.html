@@ -54,7 +54,7 @@
           statusEl.textContent = '✅ ลบ SW สำเร็จ (' + regs.length + ' ตัว)';
         }
 
-        // Step 2: Delete ALL caches
+        // Step 2: Delete ALL caches & localStorage
         await new Promise(r => setTimeout(r, 500));
         statusEl.textContent = '🗑️ ลบ Cache เก่าทั้งหมด...';
         if ('caches' in window) {
@@ -62,8 +62,12 @@
           for (const key of keys) {
             await caches.delete(key);
           }
-          statusEl.textContent = '✅ ลบ Cache สำเร็จ (' + keys.length + ' รายการ)';
         }
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+          statusEl.textContent = '✅ ล้างข้อมูลและ Cache สำเร็จ!';
+        } catch (e) {}
 
         // Step 3: Redirect to main app with cache-busting
         await new Promise(r => setTimeout(r, 1000));
