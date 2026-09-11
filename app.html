@@ -347,9 +347,16 @@
         <span id="feedBtnText" class="font-prompt font-bold">กดสั่งจ่ายอาหารทันที</span>
       </button>
 
+      <!-- Dedicated Servo Direct Test Button (ทดสอบการหมุน Servo ทันที ไม่ติดเงื่อนไข) -->
+      <button id="testServoBtn" onclick="testServoDirect()" 
+        class="w-full py-2.5 px-4 rounded-xl font-semibold text-xs text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 active:scale-[0.98] border border-amber-500/30 flex items-center justify-center gap-2 cursor-pointer transition-all">
+        <span>🧪</span>
+        <span>ทดสอบหมุน Servo ทันที (Test Servo - ไม่เช็คน้ำหนักขั้นต่ำ)</span>
+      </button>
+
       <!-- Dispense Status Notice -->
       <div id="feedNotice" class="hidden text-center text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 py-2 rounded-xl flex items-center justify-center gap-2">
-        <span class="pulse-dot">⚙️</span> มอเตอร์ Servo กำลังหมุนปล่อยอาหาร กรุณารอสักครู่...
+        <span class="pulse-dot">⚙️</span> มอเตอร์ Servo กำลังหมุนทำงาน กรุณารอสักครู่...
       </div>
     </div>
 
@@ -834,6 +841,30 @@
         checkDeviceStatus();
         log('🔄 รีเฟรชสถานะอุปกรณ์ในเครือข่าย Wi-Fi...', 'normal');
       }
+    }
+
+    // Direct Servo Test Action (ทดสอบหมุน Servo โดยตรง ไม่เช็คเงื่อนไข)
+    function testServoDirect() {
+      playChime('click');
+      triggerVibration([80, 80]);
+      log('🧪 สั่งทดสอบการหมุน Servo ไปยังบอร์ด ESP32 ทันที...', 'warn');
+      feedNotice.classList.remove('hidden');
+
+      if (CONNECT_MODE === 'mqtt') {
+        if (mqttClient && mqttClient.connected) {
+          mqttClient.publish(`${MQTT_TOPIC}/command`, JSON.stringify({ action: 'test', timestamp: Date.now() }));
+          log('📤 ส่งคำสั่ง action: "test" ผ่าน MQTT สำเร็จ! บอร์ดกำลังสั่ง Servo หมุน 3 รอบ...', 'success');
+        } else {
+          log('❌ ไม่สามารถส่งได้: MQTT ยังไม่ได้เชื่อมต่อ', 'error');
+        }
+      } else {
+        fetch(`${LOCAL_HOST}/feed`).catch(e => console.warn(e));
+        log('📤 ส่งคำสั่งผ่าน Local สำเร็จ', 'success');
+      }
+
+      setTimeout(() => {
+        feedNotice.classList.add('hidden');
+      }, 4000);
     }
 
     // Trigger Feed Action
