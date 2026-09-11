@@ -250,22 +250,23 @@
         </div>
         
         <div class="text-[11px] text-slate-400 mt-2.5 flex items-center justify-between">
-          <span>⚠️ เตือนเมื่อ: &lt; 1,500g</span>
+          <span>⚠️ เตือนเมื่อ: &lt; 1,000g (1 kg)</span>
           <span id="hopperStatusTag" class="text-emerald-400 font-medium flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ปกติ
           </span>
         </div>
       </div>
 
-      <!-- Card 2: ถาดกินอาหาร (Bowl 1kg) -->
+      <!-- Card 2: ถาดกินอาหาร (Bowl 2.5kg) -->
       <div class="glass-card rounded-2xl p-5 flex flex-col justify-between shadow-lg relative overflow-hidden group hover:border-amber-500/40 transition-all">
         <div class="absolute -right-6 -bottom-6 w-28 h-28 bg-amber-600/10 rounded-full blur-2xl group-hover:bg-amber-600/20 transition-all"></div>
         
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2 text-sm font-semibold text-slate-200">
-            <span class="text-lg">🥣</span> ถาดอาหาร (Food Bowl)
+            <img src="icons/dog_food.png" alt="Dog Food" class="w-6 h-6 rounded-full object-cover border border-amber-400/50 shadow-sm inline-block">
+            <span>ถาดอาหาร (Food Bowl)</span>
           </div>
-          <span class="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">Max 1.0 kg</span>
+          <span class="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">Max 2.5 kg</span>
         </div>
 
         <div class="my-3 flex items-baseline justify-between">
@@ -285,7 +286,7 @@
         </div>
 
         <div class="text-[11px] text-slate-400 mt-2.5 flex items-center justify-between">
-          <span>🔔 จ่ายอัตโนมัติ: &lt; 300g</span>
+          <span>🔔 จ่ายอัตโนมัติ: &lt; 400g</span>
           <span id="bowlStatusTag" class="text-emerald-400 font-medium flex items-center gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> อาหารพร้อม
           </span>
@@ -548,8 +549,8 @@
 
     let mqttClient = null;
     let mqttConnected = false;
-    const hopperMax = 5000; // 5000g (5kg)
-    const bowlMax   = 1000; // 1000g (1kg)
+    const hopperMax = 5000; // 5000g (5.0kg)
+    const bowlMax   = 2500; // 2500g (2.5kg)
 
     let isFeeding = false;
     let deferredPrompt = null;
@@ -719,6 +720,16 @@
               console.warn('Telemetry parse error:', err);
             }
           } else if (topic === `${MQTT_TOPIC}/ack`) {
+            try {
+              const ack = JSON.parse(msg);
+              if (ack.event === 'auto_feed') {
+                showNotificationAlert('🤖 ปล่อยอาหารอัตโนมัติ!', 'อาหารในถาดเหลือน้อยกว่า 400g ระบบทำการเติมอาหารลงถาดเรียบร้อยแล้ว', 'success');
+                log(`🤖 [ระบบอัตโนมัติ] จ่ายอาหารลงถาดสำเร็จ (ถาดเหลือ ${ack.bowl || '<400'}g)`, 'success');
+              } else if (ack.event === 'hopper_low') {
+                showNotificationAlert('⚠️ อาหารในถังใกล้หมด!', 'อาหารในถังเหลือน้อยกว่า 1 กิโลกรัม กรุณาเติมอาหารสุนัขครับ', 'warning');
+                log(`⚠️ [ระบบเตือน] อาหารในถังเหลือน้อยกว่า 1kg (${ack.hopper || '<1000'}g)`, 'warn');
+              }
+            } catch(e) {}
             log(`📥 ตอบรับจากบอร์ด: ${msg}`, 'success');
           }
         });
@@ -771,22 +782,22 @@
       hopperPercentEl.textContent = pct;
       hopperBar.style.width = `${pct}%`;
 
-      if (cleanWeight < 1500) {
-        hopperStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-rose-400 pulse-dot"></span> เหลือน้อยแล้ว!';
+      if (cleanWeight < 1000) {
+        hopperStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-rose-400 pulse-dot"></span> เหลือน้อย (<1kg)!';
         hopperStatusTag.className = 'text-rose-400 font-bold flex items-center gap-1';
         hopperBar.className = 'bg-gradient-to-r from-rose-500 to-amber-500 h-full rounded-full transition-all duration-700';
 
-        // แจ้งเตือนในแอปและบนจอมือถือเมื่อลดต่ำกว่า 1.5kg (ยกเว้น 0g ซึ่งเป็นช่วงทดสอบ)
+        // แจ้งเตือนในแอปและบนจอมือถือเมื่อลดต่ำกว่า 1.0kg (1,000g)
         if (!lastHopperAlertState && cleanWeight > 0) {
           lastHopperAlertState = true;
-          showNotificationAlert('⚠️ อาหารในถังเหลือน้อยแล้ว!', `อาหารในถังคงเหลือ ${cleanWeight} กรัม (${pct}%) กรุณาเติมอาหาร`, 'warning');
-          log(`⚠️ แจ้งเตือน: อาหารในถังเหลือน้อย (${cleanWeight}g / ${pct}%)`, 'warn');
+          showNotificationAlert('⚠️ อาหารในถังเหลือน้อยกว่า 1 กิโลกรัม!', `อาหารในถังคงเหลือ ${cleanWeight} กรัม (${pct}%) กรุณาเติมอาหารสุนัขครับ`, 'warning');
+          log(`⚠️ แจ้งเตือน: อาหารในถังเหลือน้อยกว่า 1kg (${cleanWeight}g / ${pct}%)`, 'warn');
         }
       } else {
         hopperStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> ปกติ';
         hopperStatusTag.className = 'text-emerald-400 font-medium flex items-center gap-1';
         hopperBar.className = 'bg-gradient-to-r from-indigo-500 to-cyan-400 h-full rounded-full transition-all duration-700';
-        if (cleanWeight >= 1800) {
+        if (cleanWeight >= 1200) {
           lastHopperAlertState = false; // รีเซ็ตสถานะเมื่อเติมอาหาร
         }
       }
@@ -799,7 +810,7 @@
       bowlPercentEl.textContent = pct;
       bowlBar.style.width = `${pct}%`;
 
-      if (cleanWeight >= 850) {
+      if (cleanWeight >= 2000) {
         bowlStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> อาหารเต็มถาดแล้ว';
         bowlStatusTag.className = 'text-emerald-400 font-bold flex items-center gap-1';
         
@@ -809,22 +820,22 @@
           showNotificationAlert('🥣 อาหารเต็มถาดแล้ว!', `อาหารในถาดมี ${cleanWeight} กรัม (${pct}%) พร้อมให้น้องหมาทานแล้วครับ`, 'success');
           log(`🥣 แจ้งเตือน: อาหารเต็มถาดแล้ว (${cleanWeight}g / ${pct}%)`, 'success');
         }
-      } else if (weight < 300) {
-        bowlStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 pulse-dot"></span> เหลือน้อย (<300g)';
+      } else if (cleanWeight < 400 && cleanWeight > 0) {
+        bowlStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 pulse-dot"></span> เหลือน้อย (<400g)';
         bowlStatusTag.className = 'text-amber-400 font-bold flex items-center gap-1';
 
         if (!lastBowlLowState) {
           lastBowlLowState = true;
-          showNotificationAlert('🔔 อาหารในถาดเหลือน้อย!', `อาหารในถาดเหลือ ${Math.round(weight)} กรัม ระบบกำลังเตรียมปล่อยอาหารอัตโนมัติ`, 'warning');
-          log(`🔔 อาหารในถาดเหลือน้อย (${Math.round(weight)}g) ระบบกำลังทำงานอัตโนมัติ`, 'warn');
+          showNotificationAlert('🔔 อาหารในถาดเหลือน้อยกว่า 400g!', `อาหารในถาดเหลือ ${cleanWeight} กรัม ระบบกำลังปล่อยอาหารลงมาเติมอัตโนมัติ...`, 'warning');
+          log(`🔔 อาหารในถาดเหลือน้อย (<400g): กำลังปล่อยอาหารอัตโนมัติ`, 'warn');
         }
       } else {
         bowlStatusTag.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> อาหารพร้อม';
         bowlStatusTag.className = 'text-emerald-400 font-medium flex items-center gap-1';
       }
 
-      if (weight < 700) lastBowlFullState = false;
-      if (weight >= 400) lastBowlLowState  = false;
+      if (cleanWeight < 1800) lastBowlFullState = false;
+      if (cleanWeight >= 600)  lastBowlLowState  = false;
     }
 
     // Manual Refresh
