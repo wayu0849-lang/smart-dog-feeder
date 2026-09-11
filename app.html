@@ -776,9 +776,9 @@
 
     // Weight Gauge UI Updaters with Real-time Alerts
     function updateHopperUI(weight) {
-      const cleanWeight = weight <= 25 ? 0 : Math.round(weight);
+      const cleanWeight = Math.max(0, Math.round(weight));
       hopperWeightEl.textContent = cleanWeight.toLocaleString();
-      const pct = cleanWeight <= 0 ? 0 : Math.min(100, Math.round((cleanWeight / hopperMax) * 100));
+      const pct = cleanWeight <= 5 ? 0 : Math.min(100, Math.round((cleanWeight / hopperMax) * 100));
       hopperPercentEl.textContent = pct;
       hopperBar.style.width = `${pct}%`;
 
@@ -804,9 +804,9 @@
     }
 
     function updateBowlUI(weight) {
-      const cleanWeight = weight <= 15 ? 0 : Math.round(weight);
+      const cleanWeight = Math.max(0, Math.round(weight));
       bowlWeightEl.textContent = cleanWeight.toLocaleString();
-      const pct = cleanWeight <= 0 ? 0 : Math.min(100, Math.round((cleanWeight / bowlMax) * 100));
+      const pct = cleanWeight <= 5 ? 0 : Math.min(100, Math.round((cleanWeight / bowlMax) * 100));
       bowlPercentEl.textContent = pct;
       bowlBar.style.width = `${pct}%`;
 
